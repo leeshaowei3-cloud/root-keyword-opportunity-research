@@ -1,4 +1,6 @@
 interface:
-  display_name: "词根查词与机会筛选"
-  short_description: "从词根扩展、语义筛选到产品机会族的完整研究流程"
-  default_prompt: "使用 $root-keyword-opportunity-research 从一组词根开始采词、筛选并输出候选产品族。"
+  display_name: "词根关键词机会总控"
+  short_description: "多渠道扩词、完整KGR覆盖、分赛道路由与候选池审计"
+  default_prompt: "使用 $root-keyword-opportunity-research 从登记词根出发，完成高召回扩展、全量指标与KGR覆盖、分赛道SERP验证，并输出可追溯候选池。"
+policy:
+  allow_implicit_invocation: true

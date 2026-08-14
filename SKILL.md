@@ -1,86 +1,151 @@
 ---
 name: root-keyword-opportunity-research
-description: 从版本化词根池出发，执行双向自动补全、分支扩展、可逆清洗、人工语义筛选、指标补充、趋势与实时 SERP 验证，并整理为可追溯的产品机会候选族。用户提出词根查词、A-Z 扩词、关键词筛选、工具站机会词、批量关键词研究、候选产品族或重新扫描旧关键词时使用；不得把搜索指标直接当成需求、付费或开发许可。
+description: 从版本化词根池出发，编排 Autocomplete、Google Trends、Google Ads、Semrush、Ahrefs、Similarweb 与实时 SERP 的高召回关键词机会发现；动态分配扩展和验证资源，完整覆盖适用 KGR，隔离指标 cohort，并形成可追溯、分赛道的 research-only 产品族候选池。用户要求词根扩展、关键词研究、旧词重筛、跨来源比对、递归与停止判断或组装 15–30 个产品族时使用；不得把 SEO 指标当成需求、付款或开发许可。
 ---
 
-# 词根查词与机会筛选
+# Keyword Opportunity Orchestrator
 
-先高召回发现，再逐层花费验证成本。把“找到词”“像一个数字产品任务”“搜索获客可能成立”“真实有人愿意付费”视为四个不同结论。
+Method contract: `v2.0.0`.
 
-## 开始前
+Build a high-recall discovery system first, then spend validation effort selectively. Treat A–Z as the deterministic baseline, not the boundary of what can be discovered.
 
-1. 读取 [references/process-and-screening.md](references/process-and-screening.md)，确定完整流程与筛选标准。
-2. 读取 [references/execution-templates.md](references/execution-templates.md)，按模板建立批次、筛选和候选台账。
-3. 明确本轮模式：`root_keyword_discovery`、`external_signal_discovery` 或 `candidate_search_validation`。三类任务不得混用原始输入或伪装成独立证据。
-4. 冻结批次信息：批次 ID、词根池版本或哈希、市场、语言、设备、词根、渠道、计划深度、预算与状态。
+## Load context
 
-## 执行流程
+1. Read workspace `AGENTS.md` and the project instructions it routes to.
+2. Read the current company state before recommending or changing a candidate. Default to `research-only` when no permission exists.
+3. Read [references/method-router.md](references/method-router.md) before choosing channels or allocating effort.
+4. Read [references/stage-and-weight-routing.md](references/stage-and-weight-routing.md) before metric gating, KGR allocation, active-pool construction, or ranking.
+5. Read [references/evidence-and-metrics.md](references/evidence-and-metrics.md) before collecting metrics, comparing providers, or scoring.
+6. Read [references/resource-allocation.md](references/resource-allocation.md) before recursion, stopping, or batch planning.
+7. Read [references/output-contract.md](references/output-contract.md) before writing a batch, shortlist, or final report.
+8. For live autocomplete collection, also use the installed `keyword-finder` Skill. For current SERP mapping, also use `opc-search-demand-mapper`. For product opportunity claims, also use `opc-opportunity-intelligence`.
 
-### 1. 跑广覆盖基线
+## Non-negotiable separation
 
-对每个已登记词根执行：
+Maintain separate ledgers for `root_keyword_discovery`, `daily_keyword_radar`, and `candidate_search_validation`. Each keeps its own `task_mode`, `batch_id`, raw inputs, source channel, provenance, rejects, metrics, completion states, and conclusions.
 
-- 词根前置和后置的 A–Z 扩展；
-- 数字扩展；
-- `how/what/why/when/where/which/can` 等问题词扩展；
-- 保存成功、零结果和失败查询；
-- 保存查询、词根、方向、扩展类型、市场、语言、设备、时间和来源。
+Do not use daily-radar, forum, GitHub, Product Hunt, Toolify, rankings, reviews, official changes, or historical candidates to seed or secretly prioritize a root-first batch. An orchestrated report may compare separately produced lanes at the product-family layer, but must label their origins and must not present cross-lane overlap as independent discovery.
 
-优先使用可恢复的自动补全工具；没有专用工具时，可用当前可用的搜索建议接口或浏览器采集，但必须保持同一数据契约。预算用尽只标记 `partial_budget_exhausted`，不能写“完成”。
+Do not change company candidate selection, validation permission, or development permission unless the founder explicitly decides.
 
-### 2. 测量分支，再决定加深
+## Workflow
 
-计算新词率、重复率、每查询新增词数、活跃分支率、任务簇数量、机会密度、语义漂移率和剩余队列。先完成所有词根的廉价基线，再把资源转向高产分支，同时保留少量反常或不熟悉分支的抽样。
+### 1. Declare the batch before collection
 
-连续两个观察窗口没有新增实质任务簇、重复率很高或明显语义漂移时，可以停止当前分支；保存未访问范围和重新开启条件。
+Report `task_mode`, batch ID, registered root-pool version/hash, market, language, device, selected roots, channels, planned depth, initial resource allocation, and expected steps. Write the manifest before the first network call.
 
-### 3. 做可逆三分流
+For root-first work, initial roots come only from the registered versioned pool. A secondary root requires a verified parent event and explicit recursion permission. Cross-channel phrases may become candidate keywords or proposed secondary roots, but never silently enter the canonical root pool.
 
-把唯一原始词分为 `rule_pass`、`review`、`reject`，并验证：
+### 2. Run the broad baseline
 
-`unique_raw = rule_pass + review + reject`
+Run bidirectional autocomplete for every selected root: root before and after A–Z, digits, and the protected baseline question words. Preserve zero-result and failed queries. Use the workspace root-radar wrapper so raw collection does not create a metrics sheet prematurely.
 
-不要在采集时删除陌生词。物理维修、工业零件、说明书、评测、导航、品牌词、游戏内容和本地服务等默认进入复核或拒绝，除非能明确形成可在线交付的数字任务。
+Treat the current per-root budget of 120 as a compatibility safety limit, not a research optimum. The present baseline graph is about 87 initial queries per root; complete that inexpensive floor across the declared roots before concentrating deep-validation spend. Schedule and report coverage by direction and expansion kind so budget truncation cannot systematically starve prefix, digit, or question probes.
 
-### 4. 做人工语义晋级
+Do not semantically reject during collection. Normalize reversibly, deduplicate only as a derived view, and keep every raw occurrence with query, root, direction, expansion kind, market, language, device, time, and source.
 
-只有同时写清以下字段的词，才能进入指标补充：
+### 3. Measure branching before narrowing
 
-- `task_type`：用户要完成的任务；
-- `input`：用户提供什么；
-- `output`：系统产出什么；
-- `digital_deliverable`：最终可携带、可保存或可使用的数字交付物；
-- `disposition=promoted`：人工明确晋级。
+After the first pass, calculate lexical branching, semantic breadth, active-branch ratio, new-keyword rate, duplicate rate, opportunity density, and per-channel marginal gain. These diagnose where to spend the next unit of effort; they are not eligibility gates.
 
-动作词不是充分条件。含义不确定的词留在 `review`，不得猜测后晋级。
+Classify branches as:
 
-### 5. 补充指标，但不混合口径
+- `broad_high_yield`: many new terms across several task clusters;
+- `broad_low_opportunity`: broad vocabulary but few concrete digital tasks;
+- `narrow_high_value`: little further branching but a clear task and deliverable;
+- `uncertain`: sparse, unfamiliar, or contradictory evidence needing a sample;
+- `saturated_or_drifted`: repeated terms or intent outside the current family.
 
-为每条指标保留市场、语言、设备、来源、匹配类型和检查日期。不同供应商、国家、设备、日期或匹配方式属于不同 cohort，不得把 A 平台的 Volume 和 B 平台的 KD 拼成一行。
+Never delete a commercially interesting narrow keyword merely because it cannot become a root. Root-pool fitness and product-candidate fitness are different decisions.
 
-在同一 cohort 内分别输出 Volume 降序、KD 升序、CPC 降序。阈值和综合启发式只用于研究排序，不是删除、需求、付费或开发门槛。
+### 4. Allocate deeper discovery dynamically
 
-### 6. 验证趋势与实时 SERP
+Use A–Z to guarantee cheap coverage, then choose the next channel by the unanswered question:
 
-- Trends 用于判断相关概念、时间形态和新近变化，不证明绝对需求。
-- 实时 SERP 用于判断当前意图、页面类型、直接工具供给、品牌强度和未完成任务缺口，不证明愿意付费。
-- SERP 必须记录市场、语言、设备、搜索类型、日期、意图组和页面类型，并标记 `pass`、`hold` 或 `fail`。
+- Google Trends Top/Rising: related concepts, recent emergence, and temporal shape;
+- Google Ads discovery: semantic expressions and close variants not exposed by spelling expansion;
+- Google related searches: adjacent search formulations and entities;
+- Semrush/Ahrefs: keyword variants, competitor/page traffic terms, estimated scale and competition;
+- Similarweb: traffic/click distribution, competing sites, geography or device hypotheses;
+- YouTube/TikTok/platform autocomplete: platform-native wording when the task is native there;
+- live SERP: current intent, supply, direct-tool saturation, brands, and unfinished task gaps.
 
-### 7. 聚类为产品机会族
+Return a promising child to its originating channel first. Expand it across other channels only when a concrete unanswered question justifies the cost. Record whether a hit is `independent`, `propagated`, or `corroborating`.
 
-按共同的用户、时刻、输入、转换和交付物聚类，不按共同词根或代码库聚类。每个产品族同时写最强支持、最强反证、实现形态、缺失证据和最便宜证伪方式。
+For each materially different semantic cluster, choose representative branches; do not cap a broad root to two or three branches in total. Use a parent orchestration batch with separately traceable baseline and deepening child runs when the collection wrapper cannot vary per-root budgets inside one immutable batch.
 
-分层只表示研究优先级：`deep_research`、`quick_test`、`observe`、`counterevidence_hold`。除非决策人明确授权，不得把任何候选写成已选择、已验证或可开发。
+### 5. Stop by marginal information gain
 
-## 交付要求
+Budgets are safety limits, not evidence that a branch is complete. Budget exhaustion means `partial_budget_exhausted` with the remaining queue preserved.
 
-至少交付：
+Continue a branch while it produces new task clusters, useful expressions, or materially different evidence. Stop or sample when consecutive windows show low marginal gain, high duplication, stable clusters, or clear semantic drift. Record the observed metrics, window size, reason, and unvisited scope. Use flexible ranges from the resource reference; do not turn them into permanent hard gates.
 
-- 批次清单与各步骤状态；
-- 原始、复核、拒绝和人工晋级台账；
-- 指标 cohort 与独立排序视图；
-- Trends 和 SERP 证据；
-- 分支停止记录；
-- 去重后的产品机会族清单。
+### 6. Clean and promote after discovery breadth is visible
 
-每一步用 `pending`、`partial`、`complete`、`not_applicable` 或 `blocked` 表示。不得因为 A–Z 已跑、预算耗尽或指标填满就声称整套流程完成。
+Apply the reversible three-way split: rule-pass, review, reject. Assert exact conservation and mutual exclusivity. Preserve ambiguous or unfamiliar phrases in review.
+
+Before freezing the family slate, run a stratified false-negative audit across review and reject strata by root, reason, and semantic class. If a stratum contains a material rate of clear digital-task misses, reopen and re-review that entire stratum. Record the sample denominator, misses, and expansion decision; do not assume a clean rule is safe merely because conservation arithmetic passes.
+
+Only a provenance-bound semantic promotion may enter metric enrichment. A promoted row needs `task_type`, `input`, `output`, `digital_deliverable`, and `disposition=promoted`. Game builds, physical repair, industrial parts, manuals, reviews, navigation, and local services stay review/rejected unless a concrete digital task and portable result are established.
+
+### 7. Build the full family longlist and canonical keyword slate
+
+Cluster all promoted phrases before any numeric shortlist. For every product family retain a natural primary phrase plus up to two standard materially different long-tail expressions. Add a protected `constraint_rescue` phrase beyond that limit whenever it is the only expression of a distinct input, format, error, batch, platform, safety, size, or workflow constraint. Preserve the rest as traceable aliases and record why each phrase was selected or omitted.
+
+Freeze the full family longlist and canonical keyword slate before creating a 15–30 family active pool. Do not use implementation ease, diversity caps, Volume, KD, CPC, KGR, or Trends to shrink the slate at this stage.
+
+Before the final gate, call any convenience view a `semantic_preview` or `provisional_family_longlist_view`, never an active pool. It must not limit the denominator used for metric enrichment, KGR, or representative SERP coverage.
+
+### 8. Enrich the full slate and route metric lanes
+
+Keep provider observations separate. A metric cohort requires market, language, device, source, match type, and checked date. Zero is a value; missing is missing. Preserve raw provider values, normalized values, unavailable values, extra columns, and conflicts.
+
+Give every phrase in the canonical slate either a valid primary-cohort observation or an explicit same-cohort missing, unavailable, invalid, or conflict record before narrowing to an active pool. Route search phrases into `kgr_longtail`, `scale_search`, or `emerging_search`; maintain `narrow_product_value` as a separate product-research lane. A family may occupy multiple lanes without one lane erasing another.
+
+Within each cohort produce independent Volume-desc, KD-asc, and CPC-desc views. Apply the 20% boundary as a soft review band. Check every metric-filled phrase with `0 < Volume <= 250` for KGR before any active-pool claim. Calculate KGR and the search-opportunity heuristic only under the conditions in the metrics reference. Never average or splice fields from different providers.
+
+Do not claim that a batch has no KGR opportunities from a final-pool sample. Report the complete denominator from promoted phrases through allintitle-checked phrases and KGR bands.
+
+### 9. Validate Trends and live SERPs by lane
+
+Store full Trends and SERP context at row level. A checked SERP is not a passed SERP. Only `SerpGateStatus=pass` under matching market, language, device, search type, date, intent group, and page type permits heuristic group ranking. Negative SERPs remain valuable counterevidence.
+
+Apply weights only inside the lane and compatible cohort defined by the stage-and-weight reference. Before SERP review, KGR bands are protected routing rules rather than a partial weighted score. A strong KGR phrase always receives a current SERP check before it can be dropped from the search-acquisition pool.
+
+Use Similarweb Global versus Semrush US only to form a `market_mismatch_hypothesis`; it cannot prove that Americans lack curiosity or replace US data.
+
+### 10. Construct the diversified active research pool
+
+Compare only inside compatible lanes and cohorts, then construct the active pool at product-family level. Cluster by shared user, moment, input, transformation, and deliverable—not merely by shared root or implementation library. Separate extraction, conversion, transcription, OCR, and segmentation when their completed jobs differ.
+
+Set `ActivePoolEligible=true` only when the canonical slate is frozen, primary metric observation coverage is conserved, all KGR-eligible phrases are assessed, and representative SERP coverage is complete. When false, do not create an `active-pool` file, status, or report title.
+
+Before writing an active pool, run `python3 scripts/validate_stage_gate.py <stage-summary.json>`. Treat a non-zero exit as a hard stop for active-pool naming and final-pool claims; preserve the preview and unresolved denominators instead.
+
+Normally return 15–30 research-only product families across tiers: `deep_research`, `quick_test`, `observe`, and `counterevidence_hold`. Do not pad with garbage to hit a quota; if fewer survive, state the shortfall and which discovery branches remain unvisited. Preserve alternate phrases inside each family rather than manufacturing duplicate products or pages.
+
+If passed strong/borderline KGR families alone exceed 30, keep a 15–30 comparison core plus a `protected_kgr_annex`; the annex remains active search research and is not silently discarded to satisfy presentation capacity.
+
+Keep every qualifying family in a versioned longlist even when only 15–30 appear in the active comparison pool. The active-pool size is a decision-aid target, not a deletion rule.
+
+For every family include the strongest supporting evidence, strongest counterevidence, implementation shape, missing evidence, and cheapest falsification. Search data may prioritize research but never proves demand, payment, product choice, validation permission, or development permission.
+
+## Conflict rule
+
+Sources do not compete for universal authority. Each answers a typed question. Compare only observations that answer the same question under compatible scope. Otherwise preserve both and label the difference `scope_mismatch`, `temporal_mismatch`, `method_mismatch`, `propagated_overlap`, or `unresolved`.
+
+When advice conflicts, retain the stable principle, mark its operating boundary, and test the uncertain parameter. Social or founder case studies may suggest tactics and priors, but do not become numeric gates or population success rates without a stable denominator.
+
+## Completion language
+
+Report every step as `pending`, `partial`, `complete`, `not_applicable`, or `blocked`, with evidence artifacts. Distinguish at least:
+
+- `autocomplete_complete`;
+- `multi_channel_discovery_complete`;
+- `metric_enrichment_complete`;
+- `serp_validation_complete`;
+- `product_family_pool_complete`.
+
+Represent each step structurally as `{status, planned, completed, failed, unvisited, reason, artifacts, reopen_condition}` rather than encoding counts inside free-form status strings.
+
+Never claim the whole process is complete because A–Z finished, the budget was consumed, or metrics were filled.

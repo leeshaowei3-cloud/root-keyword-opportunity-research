@@ -1,5 +1,13 @@
 # Changelog
 
+## 2.0.2
+
+- Keep `strict_multi_intitle_enumerated_v1`, `explicit_intitle_per_token_v1`, and `nfkc_unicode_alnum_connectors_v1` unchanged; add `ReducerPolicyVersion=verified_visible_title_lower_bound_v1` to version derived semantics.
+- Add `VerifiedMatchingUniqueUrlCount`, deduplicated from known displayed titles in which every required token is visible. A visibly complete but truncated title may support this lower bound while remaining ineligible for exactness.
+- Permit `lower_bound_gt_0_30` when the verified count reaches `T=floor(0.30×Volume)+1`, even if other returned titles have integrity issues; record `LowerBoundBasis=verified_matching_unique_urls` and never calculate a ratio for this outcome.
+- Keep exact low-supply inference fail-closed: genuine exhaustion and a clean full title audit remain mandatory, and questionable URLs cannot be filtered away to reduce an exact numerator.
+- Allow compatible v2.0.1 raw pages to be deterministically re-reduced, while requiring old and new derived artifacts to retain their reducer policy identity rather than being silently relabeled.
+
 ## 2.0.1
 
 - Add `strict_multi_intitle_enumerated_v1` and name its exact metric `StrictTitleSupplyRatio`; explicitly prohibit calling it classic KGR.

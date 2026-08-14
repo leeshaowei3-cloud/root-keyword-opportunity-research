@@ -29,11 +29,17 @@ separators, input row order retained). Minimal schema:
     "records":[
       {"keyword_id":"k1", "observation_id":"o1",
        "outcome":"exact_exhausted", "count":10,
+       "reducer_policy_version":"verified_visible_title_lower_bound_v1",
+       "operator_count":10, "verified_count":10,
+       "lower_bound_basis":"verified_matching_unique_urls",
        "context":{"hl":"en","gl":"us","device":"desktop",
          "search_type":"google_web","pws":0,"filter":0,"nfpr":1,
          "checked_date":"2026-08-14"},
        "repeat_observations":[
          {"observation_id":"o1-repeat","outcome":"exact_exhausted","count":12,
+          "reducer_policy_version":"verified_visible_title_lower_bound_v1",
+          "operator_count":12, "verified_count":12,
+          "lower_bound_basis":"verified_matching_unique_urls",
           "context":{"hl":"en","gl":"us","device":"desktop",
             "search_type":"google_web","pws":0,"filter":0,"nfpr":1,
             "checked_date":"2026-08-14"}}]}
@@ -89,6 +95,8 @@ TITLE_SUPPLY_TOKENIZER_VERSION = "nfkc_unicode_alnum_connectors_v1"
 TITLE_SUPPLY_COUNT_METHOD = (
     "paginated_deduplicated_organic_canonical_urls_with_displayed_title_integrity_audit"
 )
+TITLE_SUPPLY_REDUCER_POLICY_VERSION = "verified_visible_title_lower_bound_v1"
+TITLE_SUPPLY_LOWER_BOUND_BASIS = "verified_matching_unique_urls"
 METRIC_FIELDS = ("volume", "kd", "cpc")
 METRIC_STATUSES = {"complete", "partial", "unavailable", "invalid", "conflict"}
 NOT_ASSESSABLE_OUTCOMES = {
@@ -112,6 +120,51 @@ def records_sha256(records: list[dict[str, Any]]) -> str:
         records, ensure_ascii=False, sort_keys=True, separators=(",", ":")
     ).encode("utf-8")
     return hashlib.sha256(encoded).hexdigest()
+
+
+def _strict_counts(
+    row: dict[str, Any], location: str, outcome: str
+) -> tuple[int, int, int]:
+    """Validate one reducer observation and return count/operator/verified counts.
+
+    ``count`` remains the compact downstream value, but under this policy it is
+    always the verified visible-title count.  The larger operator result count
+    is retained as provenance and can never satisfy an early-stop threshold.
+    """
+
+    if row.get("reducer_policy_version") != TITLE_SUPPLY_REDUCER_POLICY_VERSION:
+        raise GateInputError(
+            f"{location}.reducer_policy_version must equal "
+            f"{TITLE_SUPPLY_REDUCER_POLICY_VERSION!r}"
+        )
+    if row.get("lower_bound_basis") != TITLE_SUPPLY_LOWER_BOUND_BASIS:
+        raise GateInputError(
+            f"{location}.lower_bound_basis must equal "
+            f"{TITLE_SUPPLY_LOWER_BOUND_BASIS!r}"
+        )
+    values: dict[str, int] = {}
+    for field in ("count", "operator_count", "verified_count"):
+        value = row.get(field)
+        if isinstance(value, bool) or not isinstance(value, int) or value < 0:
+            raise GateInputError(f"{location}.{field} must be non-negative integer")
+        values[field] = value
+    if values["verified_count"] > values["operator_count"]:
+        raise GateInputError(
+            f"{location}.verified_count cannot exceed operator_count"
+        )
+    if values["count"] != values["verified_count"]:
+        raise GateInputError(
+            f"{location}.count must equal verified_count; operator_count cannot "
+            "be used as the lower-bound count"
+        )
+    if outcome == "exact_exhausted" and (
+        values["operator_count"] != values["verified_count"]
+    ):
+        raise GateInputError(
+            f"{location} exact_exhausted requires v1 integrity pass: "
+            "operator_count must equal verified_count"
+        )
+    return values["count"], values["operator_count"], values["verified_count"]
 
 
 def _mapping(parent: dict[str, Any], key: str) -> dict[str, Any]:
@@ -403,6 +456,8 @@ def _evaluate(summary: dict[str, Any]) -> dict[str, Any]:
     protected_families: set[str] = set()
     repeat_complete = True
     all_strict_observation_ids: set[str] = set()
+    operator_total = 0
+    verified_total = 0
     for keyword_id, row in strict_by_id.items():
         if "repeat_confirmed" in row:
             raise GateInputError(
@@ -422,9 +477,11 @@ def _evaluate(summary: dict[str, Any]) -> dict[str, Any]:
         outcome = row.get("outcome")
         if outcome not in {"exact_exhausted", "lower_bound_gt_0_30", *NOT_ASSESSABLE_OUTCOMES}:
             raise GateInputError(f"strict row {keyword_id} has invalid outcome")
-        count = row.get("count")
-        if isinstance(count, bool) or not isinstance(count, int) or count < 0:
-            raise GateInputError(f"strict row {keyword_id}.count must be non-negative integer")
+        count, operator_count, verified_count = _strict_counts(
+            row, f"strict row {keyword_id}", outcome
+        )
+        operator_total += operator_count
+        verified_total += verified_count
         primary_context_key = _context_key(row, f"strict row {keyword_id}")
         strict_context_keys.add(primary_context_key)
         outcome_counts[outcome] += 1
@@ -437,8 +494,10 @@ def _evaluate(summary: dict[str, Any]) -> dict[str, Any]:
                 protected_families.add(family_by_keyword[keyword_id])
         elif outcome == "lower_bound_gt_0_30":
             threshold = math.floor(0.30 * volume) + 1
-            if count < threshold:
-                raise GateInputError(f"strict row {keyword_id} lower bound count is below early-stop threshold")
+            if verified_count < threshold:
+                raise GateInputError(
+                    f"strict row {keyword_id} verified_count is below early-stop threshold"
+                )
             band_counts["provisional_high"] += 1
 
         compatible_exact_repeat = False
@@ -453,21 +512,22 @@ def _evaluate(summary: dict[str, Any]) -> dict[str, Any]:
                 "exact_exhausted", "lower_bound_gt_0_30", *NOT_ASSESSABLE_OUTCOMES
             }:
                 raise GateInputError(f"{location}.outcome is invalid")
-            repeat_count = repeat.get("count")
-            if (
-                isinstance(repeat_count, bool)
-                or not isinstance(repeat_count, int)
-                or repeat_count < 0
-            ):
-                raise GateInputError(f"{location}.count must be non-negative integer")
+            _, _, repeat_verified_count = _strict_counts(
+                repeat, location, repeat_outcome
+            )
             repeat_context_key = _context_key(repeat, location)
             if repeat_context_key != primary_context_key:
                 raise GateInputError(f"{location}.context must equal the primary context")
             if repeat_outcome == "lower_bound_gt_0_30":
                 threshold = math.floor(0.30 * volume) + 1
-                if repeat_count < threshold:
-                    raise GateInputError(f"{location} lower bound count is below threshold")
-            if repeat_outcome == "exact_exhausted" and repeat_count / volume <= 0.30:
+                if repeat_verified_count < threshold:
+                    raise GateInputError(
+                        f"{location} verified_count is below early-stop threshold"
+                    )
+            if (
+                repeat_outcome == "exact_exhausted"
+                and repeat_verified_count / volume <= 0.30
+            ):
                 compatible_exact_repeat = True
         confirmation_required = (
             primary_band in {"provisional_strong", "provisional_borderline"}
@@ -638,6 +698,8 @@ def _evaluate(summary: dict[str, Any]) -> dict[str, Any]:
             "strict_keyword_ids_match": strict_ids_match,
             "strict_outcome_counts": dict(sorted(outcome_counts.items())),
             "strict_band_counts": dict(sorted(band_counts.items())),
+            "strict_operator_count_total": operator_total,
+            "strict_verified_count_total": verified_total,
             "strict_context_count": len(strict_context_keys),
             "strict_metric_context_compatible": strict_metric_context_compatible,
             "strict_repeat_confirmation_complete": repeat_complete,

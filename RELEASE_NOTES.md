@@ -1,5 +1,17 @@
 # Release notes
 
+## v2.0.2 — verified-title high-supply rescue
+
+This patch keeps collection method `strict_multi_intitle_enumerated_v1`, query syntax `explicit_intitle_per_token_v1`, tokenizer `nfkc_unicode_alnum_connectors_v1`, and the frozen Google context unchanged. It adds `ReducerPolicyVersion=verified_visible_title_lower_bound_v1` so derived semantics are reproducible independently of the raw collection identity.
+
+The reducer continues to count and retain every operator-returned organic canonical URL. It also deduplicates `VerifiedMatchingUniqueUrlCount`: URLs whose known displayed titles visibly contain every required token. A truncated title may contribute to this verified subset only when all required tokens are already visible; truncation remains an integrity issue for exactness. When the verified count reaches `T=floor(0.30×Volume)+1`, the reducer may emit `lower_bound_gt_0_30` with `LowerBoundBasis=verified_matching_unique_urls`, even if other returned titles are mismatched, truncated, or unknown. This is only a one-sided proof of high supply and never produces a ratio.
+
+The exact path remains fail-closed. Exact low-supply inference still requires genuine pagination exhaustion and a clean displayed-title audit for the full operator-returned unique URL set. If the verified count stays below T, any mismatch, truncation, or unknown title remains `not_assessable_query_integrity`; questionable URLs may never be filtered out to manufacture a low count.
+
+Compatible v2.0.1 raw pages can be deterministically re-reduced without recollection because collection semantics did not change. Existing derived artifacts retain their original policy identity; a v2.0.2 re-reduction must write a new policy-versioned artifact rather than silently relabeling the old result.
+
+This is a research-method patch. It does not grant product selection, validation, development, or release permission.
+
 ## v2.0.1 — strict multi-intitle title-supply enumeration
 
 This patch introduces method `strict_multi_intitle_enumerated_v1`. Its exact metric is `StrictTitleSupplyRatio`; it is not classic KGR. Query syntax `explicit_intitle_per_token_v1` quotes every cleaned token. Tokenizer `nfkc_unicode_alnum_connectors_v1` retains Unicode alphanumerics plus in-token `&`, `+`, and `#` after NFKC, while discarding standalone `&`.

@@ -19,8 +19,10 @@ from typing import Any
 from urllib.parse import parse_qs, parse_qsl, urlencode, urlsplit, urlunsplit
 
 
-SKILL_VERSION = "2.0.1"
+SKILL_VERSION = "2.0.2"
 METHOD_VERSION = "strict_multi_intitle_enumerated_v1"
+REDUCER_POLICY_VERSION = "verified_visible_title_lower_bound_v1"
+VERIFIED_LOWER_BOUND_BASIS = "verified_matching_unique_urls"
 QUERY_SYNTAX = "explicit_intitle_per_token_v1"
 COUNT_METHOD = (
     "paginated_deduplicated_organic_canonical_urls_with_displayed_title_integrity_audit"
@@ -256,6 +258,7 @@ def _base_result(
         "Volume": volume,
         "SkillVersion": SKILL_VERSION,
         "TitleSupplyMethodVersion": METHOD_VERSION,
+        "ReducerPolicyVersion": REDUCER_POLICY_VERSION,
         "TitleSupplyTokenizerVersion": TOKENIZER_VERSION,
         "TitleSupplyQuerySyntax": QUERY_SYNTAX,
         "TitleSupplyQuery": query,
@@ -271,6 +274,8 @@ def _base_result(
         "TitleSupplyCheckedDate": context["checked_date"],
         "TitleSupplyQueryContextKey": context_key,
         "StrictTitleSupplyUniqueUrlCount": 0,
+        "VerifiedMatchingUniqueUrlCount": 0,
+        "LowerBoundBasis": None,
         "TitleSupplyPageCount": 0,
         "TitleSupplyExhausted": False,
         "TitleSupplyBlocked": False,
@@ -288,10 +293,20 @@ def _method_mismatch(
     result: dict[str, Any], observation: dict[str, Any]
 ) -> dict[str, Any]:
     result["TitleSupplyMethodVersion"] = observation.get("method_version")
+    # Preserve the source reducer identity when an observation is rejected as
+    # legacy or method-mismatched; do not label incompatible evidence with the
+    # current v2.0.2 policy merely because the result envelope was initialized
+    # under that policy.
+    result["ReducerPolicyVersion"] = observation.get(
+        "reducer_policy_version", observation.get("ReducerPolicyVersion")
+    )
     result["TitleSupplyTokenizerVersion"] = observation.get("tokenizer_version")
     result["TitleSupplyQuerySyntax"] = observation.get("query_syntax")
     result["TitleSupplyQuery"] = observation.get("query")
     result["TitleSupplyCountMethod"] = observation.get("count_method")
+    result["LowerBoundBasis"] = observation.get(
+        "lower_bound_basis", observation.get("LowerBoundBasis")
+    )
     result["TitleSupplyCountStatus"] = "legacy_reference_only"
     result["StrictTitleSupplyRoutingBand"] = "not_assessable_method_mismatch"
     return result
@@ -335,6 +350,7 @@ def evaluate_observation(observation: dict[str, Any]) -> dict[str, Any]:
         raise TitleSupplyObservationError("pages must be an ordered array")
 
     unique_urls: set[str] = set()
+    verified_matching_urls: set[str] = set()
     seen_page_urls: set[str] = set()
     seen_organic_page_sets: set[frozenset[str]] = set()
     threshold_count = math.floor(HIGH_BOUNDARY * volume) + 1
@@ -350,6 +366,7 @@ def evaluate_observation(observation: dict[str, Any]) -> dict[str, Any]:
 
         if captcha or blocked:
             result["StrictTitleSupplyUniqueUrlCount"] = len(unique_urls)
+            result["VerifiedMatchingUniqueUrlCount"] = len(verified_matching_urls)
             result["TitleSupplyBlocked"] = True
             result["TitleSupplyCaptcha"] = captcha
             result["TitleSupplyCountStatus"] = (
@@ -371,6 +388,7 @@ def evaluate_observation(observation: dict[str, Any]) -> dict[str, Any]:
         canonical_page_url = canonicalize_result_url(page_url)
         if canonical_page_url in seen_page_urls:
             result["StrictTitleSupplyUniqueUrlCount"] = len(unique_urls)
+            result["VerifiedMatchingUniqueUrlCount"] = len(verified_matching_urls)
             result["TitleSupplyBlocked"] = True
             result["TitleSupplyCountStatus"] = "blocked_same_page_loop"
             result["StrictTitleSupplyRoutingBand"] = "not_assessable_blocked"
@@ -430,6 +448,13 @@ def evaluate_observation(observation: dict[str, Any]) -> dict[str, Any]:
                 if title_unknown
                 else displayed_title_matches(keyword, displayed_title)
             )
+            # A visible title that contains every required token is a safe,
+            # one-sided lower-bound witness for its canonical URL. A trailing
+            # ellipsis does not erase tokens that are already visibly present.
+            # Repeated occurrences can therefore verify a URL even when a
+            # different occurrence is mismatched, truncated, or unknown.
+            if title_matches:
+                verified_matching_urls.add(normalized_result_url)
             if title_unknown or title_truncated or not title_matches:
                 result["TitleSupplyQueryIntegrity"] = "hold"
                 result["TitleSupplyIntegrityIssueCount"] += 1
@@ -437,6 +462,7 @@ def evaluate_observation(observation: dict[str, Any]) -> dict[str, Any]:
         page_fingerprint = frozenset(page_organic_urls)
         if page_fingerprint and page_fingerprint in seen_organic_page_sets:
             result["StrictTitleSupplyUniqueUrlCount"] = len(unique_urls)
+            result["VerifiedMatchingUniqueUrlCount"] = len(verified_matching_urls)
             result["TitleSupplyBlocked"] = True
             result["TitleSupplyCountStatus"] = "blocked_same_results_loop"
             result["StrictTitleSupplyRoutingBand"] = "not_assessable_blocked"
@@ -445,12 +471,7 @@ def evaluate_observation(observation: dict[str, Any]) -> dict[str, Any]:
             seen_organic_page_sets.add(page_fingerprint)
 
         result["StrictTitleSupplyUniqueUrlCount"] = len(unique_urls)
-        if result["TitleSupplyQueryIntegrity"] == "hold":
-            result["TitleSupplyCountStatus"] = "query_integrity_hold"
-            result["StrictTitleSupplyRoutingBand"] = (
-                "not_assessable_query_integrity"
-            )
-            return result
+        result["VerifiedMatchingUniqueUrlCount"] = len(verified_matching_urls)
         if exhausted_flag:
             pagination_state = page.get("pagination_state")
             terminal_evidence = page.get("end_of_results_evidence")
@@ -483,17 +504,32 @@ def evaluate_observation(observation: dict[str, Any]) -> dict[str, Any]:
                     result["TitleSupplyCountStatus"] = "not_assessable_terminal_evidence"
                     result["StrictTitleSupplyRoutingBand"] = "not_assessable_blocked"
                     return result
+            if len(verified_matching_urls) >= threshold_count:
+                result["TitleSupplyCountStatus"] = "lower_bound_gt_0_30"
+                result["StrictTitleSupplyRoutingBand"] = "provisional_high"
+                result["LowerBoundBasis"] = VERIFIED_LOWER_BOUND_BASIS
+                return result
+            if verified_matching_urls != unique_urls:
+                result["TitleSupplyCountStatus"] = "query_integrity_hold"
+                result["StrictTitleSupplyRoutingBand"] = (
+                    "not_assessable_query_integrity"
+                )
+                return result
             ratio = len(unique_urls) / volume
             result["TitleSupplyExhausted"] = True
             result["TitleSupplyCountStatus"] = "exact_exhausted"
             result["StrictTitleSupplyRatio"] = ratio
             result["StrictTitleSupplyRoutingBand"] = _provisional_band(ratio)
             return result
-        if len(unique_urls) >= threshold_count:
+        if len(verified_matching_urls) >= threshold_count:
             result["TitleSupplyCountStatus"] = "lower_bound_gt_0_30"
             result["StrictTitleSupplyRoutingBand"] = "provisional_high"
+            result["LowerBoundBasis"] = VERIFIED_LOWER_BOUND_BASIS
             return result
 
+    if result["TitleSupplyQueryIntegrity"] == "hold":
+        result["TitleSupplyCountStatus"] = "query_integrity_hold"
+        result["StrictTitleSupplyRoutingBand"] = "not_assessable_query_integrity"
     return result
 
 

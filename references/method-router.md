@@ -51,14 +51,14 @@ Use this order; do not turn it into a keyword-level Top-N funnel:
 
 `semantic promotion -> product-family clustering -> full canonical keyword slate -> primary metric cohort for the full slate -> strict-title-supply/scale/emerging/narrow-value lane routing -> Trends and live SERP -> active research pool`
 
-- `StrictTitleSupplyRatio` is an early, provisional routing observation for the complete eligible long-tail lane, not classic KGR and not a post-hoc audit of phrases that survived another ranking.
+- `StrictTitleSupplyRatio` is an early, provisional routing observation for the complete eligible long-tail lane, not classic KGR and not a post-hoc audit of phrases that survived another ranking. Under `ReducerPolicyVersion=verified_visible_title_lower_bound_v1`, a deduplicated verified-title subset may also prove only `lower_bound_gt_0_30` with `LowerBoundBasis=verified_matching_unique_urls`; it never creates an exact ratio or a low-supply inference.
 - Volume, KD, and CPC may describe and route phrases only after semantic promotion; they do not decide whether a phrase expresses a real digital task.
 - Trends has high weight only in the emerging lane and a modest stability role elsewhere.
 - A current SERP is the final search-acquisition gate. It may defeat a numeric score, but cannot prove payment or product demand.
 - Product/problem evidence is scored separately from search acquisition and cannot be backfilled with SEO metrics.
 - Build the 15–30 family pool only after the full canonical slate has been routed. Keep overflow, counterevidence, and every provisionally qualifying strict-title-supply phrase in the versioned longlist.
 
-Never claim a batch-wide absence of low-title-supply phrases from an active-pool sample. The denominator must cover every metric-filled canonical phrase with `0 < Volume <= 250`. Only `strict_multi_intitle_enumerated_v1` observations are compatible. Unquoted-classic observations are never reused under this method and remain legacy comparison only; preserve their actual count in the batch migration ledger.
+Never claim a batch-wide absence of low-title-supply phrases from an active-pool sample. The denominator must cover every metric-filled canonical phrase with `0 < Volume <= 250`. Only `strict_multi_intitle_enumerated_v1` observations are compatible, and their derived artifacts must identify the reducer policy. v2.0.2 leaves collection method, query syntax, and tokenizer unchanged, so compatible v2.0.1 raw pages may be re-reduced; old derived results remain versioned evidence and must not be silently relabeled. Unquoted-classic observations are never reused under this method and remain legacy comparison only; preserve their actual count in the batch migration ledger.
 
 ## Propagation labels
 

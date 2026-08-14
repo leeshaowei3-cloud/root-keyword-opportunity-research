@@ -68,10 +68,19 @@ def valid_summary():
         {
             "keyword_id": f"k{index}", "observation_id": f"o{index}",
             "outcome": outcomes[index - 1], "count": counts[index - 1],
+            "reducer_policy_version": "verified_visible_title_lower_bound_v1",
+            "operator_count": counts[index - 1],
+            "verified_count": counts[index - 1],
+            "lower_bound_basis": "verified_matching_unique_urls",
             "context": context(),
             "repeat_observations": ([{
                 "observation_id": f"r{index}", "outcome": "exact_exhausted",
-                "count": 12 if index == 1 else 28, "context": context(),
+                "count": 12 if index == 1 else 28,
+                "reducer_policy_version": "verified_visible_title_lower_bound_v1",
+                "operator_count": 12 if index == 1 else 28,
+                "verified_count": 12 if index == 1 else 28,
+            "lower_bound_basis": "verified_matching_unique_urls",
+                "context": context(),
             }] if index <= 2 else []),
         }
         for index in range(1, 9)
@@ -141,8 +150,56 @@ class StageGateInlineEvidenceTest(unittest.TestCase):
 
     def test_strict_artifact_sha_is_recomputed(self):
         summary = valid_summary()
-        summary["strict_title_supply"]["records"][0]["count"] = 11
+        row = summary["strict_title_supply"]["records"][0]
+        row.update(count=11, operator_count=11, verified_count=11)
         self.assert_blocked(summary, "artifact SHA")
+
+    def test_strict_reducer_policy_fields_are_required(self):
+        for field in (
+            "reducer_policy_version", "operator_count", "verified_count",
+            "lower_bound_basis",
+        ):
+            with self.subTest(field=field):
+                summary = valid_summary()
+                del summary["strict_title_supply"]["records"][2][field]
+                rehash(summary, "strict")
+                self.assert_blocked(summary, field)
+
+    def test_operator_count_cannot_impersonate_verified_lower_bound(self):
+        summary = valid_summary()
+        row = summary["strict_title_supply"]["records"][6]
+        row.update(operator_count=31, verified_count=30, count=31)
+        rehash(summary, "strict")
+        self.assert_blocked(summary, "count must equal verified_count")
+
+    def test_verified_count_at_threshold_passes_lower_bound_gate(self):
+        summary = valid_summary()
+        row = summary["strict_title_supply"]["records"][6]
+        row.update(operator_count=40, verified_count=31, count=31)
+        rehash(summary, "strict")
+        result = evaluate(summary)
+        self.assertTrue(result["ActivePoolEligible"], result)
+
+    def test_operator_at_threshold_but_verified_below_threshold_fails(self):
+        summary = valid_summary()
+        row = summary["strict_title_supply"]["records"][6]
+        row.update(operator_count=31, verified_count=30, count=30)
+        rehash(summary, "strict")
+        self.assert_blocked(summary, "verified_count is below early-stop threshold")
+
+    def test_verified_count_cannot_exceed_operator_count(self):
+        summary = valid_summary()
+        row = summary["strict_title_supply"]["records"][6]
+        row.update(operator_count=30, verified_count=31, count=31)
+        rehash(summary, "strict")
+        self.assert_blocked(summary, "cannot exceed operator_count")
+
+    def test_exact_low_requires_v1_integrity_count_equality(self):
+        summary = valid_summary()
+        row = summary["strict_title_supply"]["records"][2]
+        row.update(operator_count=41, verified_count=40, count=40)
+        rehash(summary, "strict")
+        self.assert_blocked(summary, "v1 integrity pass")
 
     def test_serp_artifact_sha_is_recomputed(self):
         summary = valid_summary()
@@ -219,7 +276,7 @@ class StageGateInlineEvidenceTest(unittest.TestCase):
         summary = valid_summary()
         for row in summary["strict_title_supply"]["records"]:
             row["outcome"] = "not_assessable_missing_enumeration"
-            row["count"] = 0
+            row.update(count=0, operator_count=0, verified_count=0)
         rehash(summary, "strict")
         self.assert_blocked(summary, "must be assessable")
 
@@ -237,14 +294,15 @@ class StageGateInlineEvidenceTest(unittest.TestCase):
     def test_zero_exact_requires_repeat_confirmation(self):
         summary = valid_summary()
         row = summary["strict_title_supply"]["records"][2]
-        row["count"] = 0
+        row.update(count=0, operator_count=0, verified_count=0)
         row["repeat_observations"] = []
         rehash(summary, "strict")
         self.assert_blocked(summary, "same-context exact repeat at <=0.30")
 
     def test_repeat_above_point_thirty_does_not_confirm(self):
         summary = valid_summary()
-        summary["strict_title_supply"]["records"][0]["repeat_observations"][0]["count"] = 31
+        repeat = summary["strict_title_supply"]["records"][0]["repeat_observations"][0]
+        repeat.update(count=31, operator_count=31, verified_count=31)
         rehash(summary, "strict")
         self.assert_blocked(summary, "same-context exact repeat at <=0.30")
 

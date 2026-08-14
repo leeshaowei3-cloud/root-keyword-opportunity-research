@@ -5,6 +5,7 @@ from scripts.kgr_title_supply import (
     COUNT_METHOD,
     METHOD_VERSION,
     QUERY_SYNTAX,
+    REDUCER_POLICY_VERSION,
     TOKENIZER_VERSION,
     build_strict_query,
     canonicalize_result_url,
@@ -257,6 +258,181 @@ class StrictTitleSupplyTest(unittest.TestCase):
         self.assertEqual(result["TitleSupplyCountStatus"], "lower_bound_gt_0_30")
         self.assertIsNone(result["StrictTitleSupplyRatio"])
         self.assertEqual(result["StrictTitleSupplyRoutingBand"], "provisional_high")
+        self.assertEqual(
+            result["ReducerPolicyVersion"], REDUCER_POLICY_VERSION
+        )
+        self.assertEqual(result["VerifiedMatchingUniqueUrlCount"], 4)
+        self.assertEqual(
+            result["LowerBoundBasis"],
+            "verified_matching_unique_urls",
+        )
+
+    def test_operator_threshold_without_verified_titles_does_not_stop_high(self):
+        keyword = "joke generator api"
+        mismatches = [
+            organic(keyword, f"mismatch-{index}", title="Joke generator")
+            for index in range(7)
+        ]
+        result = evaluate_observation(
+            observation(keyword, 20, [page(1, mismatches, keyword=keyword)])
+        )
+        self.assertEqual(result["StrictTitleSupplyUniqueUrlCount"], 7)
+        self.assertEqual(result["VerifiedMatchingUniqueUrlCount"], 0)
+        self.assertEqual(result["TitleSupplyCountStatus"], "query_integrity_hold")
+        self.assertIsNone(result["LowerBoundBasis"])
+
+    def test_operator_threshold_page_is_not_an_early_stop_when_later_page_verifies(self):
+        keyword = "joke generator api"
+        first = [
+            organic(keyword, f"mismatch-{index}", title="Joke generator")
+            for index in range(7)
+        ]
+        second = [organic(keyword, f"pass-{index}") for index in range(7)]
+        result = evaluate_observation(
+            observation(
+                keyword,
+                20,
+                [page(1, first, keyword=keyword), page(2, second, keyword=keyword)],
+            )
+        )
+        self.assertEqual(result["StrictTitleSupplyUniqueUrlCount"], 14)
+        self.assertEqual(result["VerifiedMatchingUniqueUrlCount"], 7)
+        self.assertEqual(result["TitleSupplyCountStatus"], "lower_bound_gt_0_30")
+        self.assertIsNone(result["StrictTitleSupplyRatio"])
+
+    def test_exact_low_supply_requires_every_unique_url_verified(self):
+        keyword = "joke generator api"
+        terminal = page(
+            1,
+            [
+                organic(keyword, "pass"),
+                organic(keyword, "mismatch", title="Joke generator"),
+            ],
+            exhausted=True,
+            keyword=keyword,
+        )
+        result = evaluate_observation(observation(keyword, 20, [terminal]))
+        self.assertEqual(result["StrictTitleSupplyUniqueUrlCount"], 2)
+        self.assertEqual(result["VerifiedMatchingUniqueUrlCount"], 1)
+        self.assertEqual(result["TitleSupplyCountStatus"], "query_integrity_hold")
+        self.assertFalse(result["TitleSupplyExhausted"])
+        self.assertIsNone(result["StrictTitleSupplyRatio"])
+
+    def test_same_url_is_verified_when_any_visible_occurrence_matches(self):
+        keyword = "joke generator api"
+        first = organic(keyword, "same", title="Joke generator")
+        second = organic(keyword, "same", title="Joke Generator API")
+        result = evaluate_observation(
+            observation(
+                keyword,
+                20,
+                [
+                    page(1, [first, second], exhausted=True, keyword=keyword),
+                ],
+            )
+        )
+        self.assertEqual(result["StrictTitleSupplyUniqueUrlCount"], 1)
+        self.assertEqual(result["VerifiedMatchingUniqueUrlCount"], 1)
+        self.assertEqual(result["TitleSupplyCountStatus"], "exact_exhausted")
+        self.assertEqual(result["StrictTitleSupplyRatio"], 0.05)
+
+    def test_four_real_calibration_fixtures_recompute_under_v2_0_2_policy(self):
+        acronym = "acronym maker from words"
+        exact = evaluate_observation(
+            observation(
+                acronym,
+                210,
+                [
+                    page(
+                        1,
+                        [
+                            organic(
+                                acronym,
+                                "acronym",
+                                title="Acronym Maker From Words Translator | Free & AI-Powered",
+                            )
+                        ],
+                        exhausted=True,
+                        keyword=acronym,
+                    )
+                ],
+            )
+        )
+        self.assertEqual(exact["VerifiedMatchingUniqueUrlCount"], 1)
+        self.assertEqual(exact["TitleSupplyCountStatus"], "exact_exhausted")
+        self.assertEqual(exact["StrictTitleSupplyRoutingBand"], "provisional_strong")
+
+        fixtures = [
+            (
+                "joke generator api",
+                [
+                    "TreciaKS/Joke-Generator",
+                    "Joke Generator API",
+                    "Random Joke Generator | JavaScript Fetch API",
+                    "Creating a Dad Joke Generator with Reddit API",
+                    "Joke Generator API | Tutorial | HTML CSS JavaScript",
+                    "Joke Generator API",
+                    "How to create a Random Joke Generator using API In Tamil ...",
+                    "Random Joke Generator using API",
+                    "Random Joke Generator using JavaScript & API",
+                ],
+                8,
+            ),
+            (
+                "api maker ai",
+                [
+                    "API Maker Pricing 2026 — Plans, Costs and AI Agent Readiness ...",
+                    "Welcome to the Conversion Maker AI API documentation.",
+                    "Presenton: AI Presentation Maker & Open-Source API",
+                    "Free AI APIs for Api maker - 6 Free AI tools",
+                    "API Maker® — The Complete Backend Solution's Post",
+                    "Design Assets Maker: A Gen AI API-powered Airtable Base ...",
+                    "AI-Powered Api Documentation Maker | SlideAI",
+                    "Api Identity Logo Maker",
+                    "AI UGC Video Maker API",
+                ],
+                7,
+            ),
+            (
+                "api maker free",
+                [
+                    "API Sequence Diagram Maker — Free Online Tool",
+                    "Free AI APIs for Api maker - 6 Free AI tools",
+                    "API Documentation Maker - Free Online Tool",
+                    "15 API Logos - Free Logo Maker",
+                    "API Maker® - New era of backend begins",
+                    "Free Mini Tools for Api maker - 19 Free AI tools",
+                    "Free Automated Social Media Post Maker API with Templates",
+                    "Api Maker APK (Android App) - Free Download",
+                    "Free Ticket Maker API – Automate Event Ticket Creation",
+                ],
+                8,
+            ),
+        ]
+        for keyword, titles, verified in fixtures:
+            with self.subTest(keyword=keyword):
+                results = [
+                    organic(keyword, f"real-{index}", title=title)
+                    for index, title in enumerate(titles)
+                ]
+                reduced = evaluate_observation(
+                    observation(keyword, 20, [page(1, results, keyword=keyword)])
+                )
+                self.assertEqual(reduced["StrictTitleSupplyUniqueUrlCount"], 9)
+                self.assertEqual(
+                    reduced["VerifiedMatchingUniqueUrlCount"], verified
+                )
+                self.assertEqual(
+                    reduced["TitleSupplyCountStatus"], "lower_bound_gt_0_30"
+                )
+                self.assertEqual(
+                    reduced["StrictTitleSupplyRoutingBand"], "provisional_high"
+                )
+                self.assertIsNone(reduced["StrictTitleSupplyRatio"])
+                self.assertEqual(
+                    reduced["LowerBoundBasis"],
+                    "verified_matching_unique_urls",
+                )
 
     def test_captcha_stops_before_results_on_that_page_are_counted(self):
         keyword = "captcha tool"
@@ -378,8 +554,9 @@ class StrictTitleSupplyTest(unittest.TestCase):
             observation(keyword, 100, [page(1, [truncated], exhausted=True)])
         )
         self.assertEqual(result["TitleSupplyQueryIntegrity"], "hold")
-        self.assertEqual(result["TitleSupplyCountStatus"], "query_integrity_hold")
-        self.assertIsNone(result["StrictTitleSupplyRatio"])
+        self.assertEqual(result["VerifiedMatchingUniqueUrlCount"], 1)
+        self.assertEqual(result["TitleSupplyCountStatus"], "exact_exhausted")
+        self.assertEqual(result["StrictTitleSupplyRatio"], 0.01)
 
     def test_midline_unicode_ellipsis_auto_marks_title_as_truncated(self):
         keyword = "complete phrase tool"
@@ -388,7 +565,8 @@ class StrictTitleSupplyTest(unittest.TestCase):
             observation(keyword, 100, [page(1, [truncated], exhausted=True)])
         )
         self.assertEqual(result["TitleSupplyQueryIntegrity"], "hold")
-        self.assertEqual(result["TitleSupplyCountStatus"], "query_integrity_hold")
+        self.assertEqual(result["VerifiedMatchingUniqueUrlCount"], 1)
+        self.assertEqual(result["TitleSupplyCountStatus"], "exact_exhausted")
 
     def test_nfkc_fullwidth_dot_sequence_marks_title_as_truncated(self):
         keyword = "complete phrase tool"
@@ -397,9 +575,10 @@ class StrictTitleSupplyTest(unittest.TestCase):
             observation(keyword, 100, [page(1, [truncated], exhausted=True)])
         )
         self.assertEqual(result["TitleSupplyQueryIntegrity"], "hold")
-        self.assertEqual(result["TitleSupplyCountStatus"], "query_integrity_hold")
+        self.assertEqual(result["VerifiedMatchingUniqueUrlCount"], 1)
+        self.assertEqual(result["TitleSupplyCountStatus"], "exact_exhausted")
 
-    def test_truncated_title_mismatch_holds_query_integrity(self):
+    def test_explicit_truncation_with_all_tokens_visible_is_verified(self):
         keyword = "complete phrase tool"
         truncated = organic(
             keyword,
@@ -412,13 +591,10 @@ class StrictTitleSupplyTest(unittest.TestCase):
         )
         self.assertEqual(result["TitleSupplyQueryIntegrity"], "hold")
         self.assertEqual(result["StrictTitleSupplyUniqueUrlCount"], 1)
-        self.assertEqual(result["TitleSupplyCountStatus"], "query_integrity_hold")
-        self.assertFalse(result["TitleSupplyExhausted"])
-        self.assertIsNone(result["StrictTitleSupplyRatio"])
-        self.assertEqual(
-            result["StrictTitleSupplyRoutingBand"],
-            "not_assessable_query_integrity",
-        )
+        self.assertEqual(result["VerifiedMatchingUniqueUrlCount"], 1)
+        self.assertEqual(result["TitleSupplyCountStatus"], "exact_exhausted")
+        self.assertTrue(result["TitleSupplyExhausted"])
+        self.assertEqual(result["StrictTitleSupplyRatio"], 0.01)
 
     def test_unknown_title_counts_url_then_holds_integrity(self):
         keyword = "complete phrase tool"
@@ -450,6 +626,8 @@ class StrictTitleSupplyTest(unittest.TestCase):
                 50,
                 [page(1, [organic(keyword, "a")], exhausted=True)],
                 query="allintitle:legacy tool",
+                reducer_policy_version="legacy_not_applicable",
+                lower_bound_basis="legacy_not_applicable",
             )
         )
         self.assertEqual(result["TitleSupplyCountStatus"], "legacy_reference_only")
@@ -458,6 +636,8 @@ class StrictTitleSupplyTest(unittest.TestCase):
             result["StrictTitleSupplyRoutingBand"], "not_assessable_method_mismatch"
         )
         self.assertEqual(result["TitleSupplyQuery"], "allintitle:legacy tool")
+        self.assertEqual(result["ReducerPolicyVersion"], "legacy_not_applicable")
+        self.assertEqual(result["LowerBoundBasis"], "legacy_not_applicable")
 
     def test_single_reported_total_is_legacy_only(self):
         result = evaluate_observation(

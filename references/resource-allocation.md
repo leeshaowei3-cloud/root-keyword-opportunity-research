@@ -69,14 +69,14 @@ Default recursion is two semantic levels after the initial root. Continue deeper
 Discovery budget and validation budget are separate. Do not spend all validation effort on a fixed Top-N created before metrics.
 
 1. Give every phrase in the frozen canonical keyword slate one primary comparable metric observation where the provider permits it.
-2. Give 100% of metric-filled phrases with `0 < Volume <= 250` an allintitle/KGR check. This is a coverage obligation, not a weighted sampling budget.
-3. Repeat anomalous zero counts and every apparent `strong_kgr` or `borderline_kgr` result with the same syntax/context, preserving each dated observation; use the median of valid runs where a continuous value is required.
-4. Give every `strong_kgr` and `borderline_kgr` phrase a current SERP check. Sample `secondary_kgr` phrases according to task clarity and trend evidence.
+2. Give 100% of metric-filled phrases with `0 < Volume <= 250` a `strict_multi_intitle_enumerated_v1` check. Use `explicit_intitle_per_token_v1` with `nfkc_unicode_alnum_connectors_v1`, quote every cleaned token, retain in-token `&`/`+`/`#`, and discard standalone `&`. Require typed booleans and bind each page URL to the strict query, frozen context, and continuous pagination offset. Count and deduplicate operator-returned organic canonical URLs before performing the displayed-title integrity audit; remove display tracking while retaining business parameters. Any mismatch, explicit or detected truncation, or unknown title holds the whole observation without a ratio. Exact requires query-integrity pass plus terminal state, semantically consistent terminal evidence, and an absent next control. Stop at `T=floor(0.30×Volume)+1` as `lower_bound_gt_0_30` without a ratio. Stop on CAPTCHA, blocks, repeated page URLs, or repeated organic-result sets. The reducer rejects `Volume>250`; optional scale-lane title observations stay in a separate out-of-scope artifact. This is a coverage obligation, not a weighted sampling budget.
+3. Repeat anomalous exact zero counts and every `provisional_strong` or `provisional_borderline` observation with the same method/context, preserving each dated observation; use the median only across compatible exact `StrictTitleSupplyRatio` runs. Unquoted-classic observations have zero reuse under this method and remain legacy-only; keep their batch-specific migration count in the audit ledger.
+4. Give every `provisional_strong` and `provisional_borderline` phrase a current SERP check. Retain exact or lower-bound `provisional_high` outcomes as counterevidence; sample them only when task clarity or other evidence independently warrants it.
 5. Give every admitted `narrow_product_value` family a current intent/SERP check and the cheapest permitted problem falsification; absence of problem/payment evidence stays pending, not zero.
 6. Spend remaining SERP capacity across representative `scale_search` and `emerging_search` families, plus a title-supply/anomaly sample from scale search, preserving family and task diversity.
 7. Use Ahrefs, Similarweb, competitor-page analysis, and expensive browser review later and selectively at keyword-family or domain level; do not spend them uniformly on every raw phrase.
 
-If a provider limit interrupts enrichment, preserve the unfilled slate and resume it before declaring the active pool final. A `semantic_preview` or `provisional_family_longlist_view` may be shown, but it must not constrain the enrichment denominator and must not use `active-pool`, `KGR-screened`, or `fully-ranked` in its filename, status, or title.
+If a provider limit interrupts enrichment, preserve the unfilled slate and resume it before declaring the active pool final. A `semantic_preview` or `provisional_family_longlist_view` may be shown, but it must not constrain the enrichment denominator and must not use `active-pool`, `title-supply-complete`, or `fully-ranked` in its filename, status, or title.
 
 ## Candidate-pool capacity
 
@@ -91,6 +91,6 @@ Suggested research allocation:
 
 Do not force weak terms into the pool. If fewer than 15 survive, report which roots/channels were not explored sufficiently and run another discovery allocation before lowering semantic quality.
 
-The 15–30 target is applied only after lane routing and representative SERPs. It must not cap the canonical slate, the KGR-eligible set, or the versioned longlist.
+The 15–30 target is applied only after lane routing and representative SERPs. It must not cap the canonical slate, the strict-title-supply-eligible set, or the versioned longlist.
 
-When passed strong/borderline KGR families exceed 30, place the overflow in a `protected_kgr_annex` rather than deleting it. The annex consumes validation capacity and remains part of the active research denominator.
+When passed provisional-strong/borderline strict-title-supply families exceed 30, place the overflow in a `protected_title_supply_annex` rather than deleting it. The annex consumes validation capacity and remains part of the active research denominator.

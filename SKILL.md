@@ -1,11 +1,11 @@
 ---
 name: root-keyword-opportunity-research
-description: 从版本化词根池出发，编排 Autocomplete、Google Trends、Google Ads、Semrush、Ahrefs、Similarweb 与实时 SERP 的高召回关键词机会发现；动态分配扩展和验证资源，完整覆盖适用 KGR，隔离指标 cohort，并形成可追溯、分赛道的 research-only 产品族候选池。用户要求词根扩展、关键词研究、旧词重筛、跨来源比对、递归与停止判断或组装 15–30 个产品族时使用；不得把 SEO 指标当成需求、付款或开发许可。
+description: 从版本化词根池出发，编排 Autocomplete、Google Trends、Google Ads、Semrush、Ahrefs、Similarweb 与实时 SERP 的高召回关键词机会发现；动态分配扩展和验证资源，完整覆盖严格多 intitle 标题供给枚举，隔离指标 cohort，并形成可追溯、分赛道的 research-only 产品族候选池。用户要求词根扩展、关键词研究、旧词重筛、跨来源比对、递归与停止判断或组装 15–30 个产品族时使用；不得把严格标题供给比率冒充经典 KGR，也不得把 SEO 指标当成需求、付款或开发许可。
 ---
 
 # Keyword Opportunity Orchestrator
 
-Method contract: `v2.0.0`.
+Method contract: `v2.0.1`.
 
 Build a high-recall discovery system first, then spend validation effort selectively. Treat A–Z as the deterministic baseline, not the boundary of what can be discovered.
 
@@ -14,7 +14,7 @@ Build a high-recall discovery system first, then spend validation effort selecti
 1. Read workspace `AGENTS.md` and the project instructions it routes to.
 2. Read the current company state before recommending or changing a candidate. Default to `research-only` when no permission exists.
 3. Read [references/method-router.md](references/method-router.md) before choosing channels or allocating effort.
-4. Read [references/stage-and-weight-routing.md](references/stage-and-weight-routing.md) before metric gating, KGR allocation, active-pool construction, or ranking.
+4. Read [references/stage-and-weight-routing.md](references/stage-and-weight-routing.md) before metric gating, strict title-supply allocation, active-pool construction, or ranking.
 5. Read [references/evidence-and-metrics.md](references/evidence-and-metrics.md) before collecting metrics, comparing providers, or scoring.
 6. Read [references/resource-allocation.md](references/resource-allocation.md) before recursion, stopping, or batch planning.
 7. Read [references/output-contract.md](references/output-contract.md) before writing a batch, shortlist, or final report.
@@ -92,25 +92,25 @@ Only a provenance-bound semantic promotion may enter metric enrichment. A promot
 
 Cluster all promoted phrases before any numeric shortlist. For every product family retain a natural primary phrase plus up to two standard materially different long-tail expressions. Add a protected `constraint_rescue` phrase beyond that limit whenever it is the only expression of a distinct input, format, error, batch, platform, safety, size, or workflow constraint. Preserve the rest as traceable aliases and record why each phrase was selected or omitted.
 
-Freeze the full family longlist and canonical keyword slate before creating a 15–30 family active pool. Do not use implementation ease, diversity caps, Volume, KD, CPC, KGR, or Trends to shrink the slate at this stage.
+Freeze the full family longlist and canonical keyword slate before creating a 15–30 family active pool. Do not use implementation ease, diversity caps, Volume, KD, CPC, strict title-supply routing, or Trends to shrink the slate at this stage.
 
-Before the final gate, call any convenience view a `semantic_preview` or `provisional_family_longlist_view`, never an active pool. It must not limit the denominator used for metric enrichment, KGR, or representative SERP coverage.
+Before the final gate, call any convenience view a `semantic_preview` or `provisional_family_longlist_view`, never an active pool. It must not limit the denominator used for metric enrichment, strict title-supply enumeration, or representative SERP coverage.
 
 ### 8. Enrich the full slate and route metric lanes
 
 Keep provider observations separate. A metric cohort requires market, language, device, source, match type, and checked date. Zero is a value; missing is missing. Preserve raw provider values, normalized values, unavailable values, extra columns, and conflicts.
 
-Give every phrase in the canonical slate either a valid primary-cohort observation or an explicit same-cohort missing, unavailable, invalid, or conflict record before narrowing to an active pool. Route search phrases into `kgr_longtail`, `scale_search`, or `emerging_search`; maintain `narrow_product_value` as a separate product-research lane. A family may occupy multiple lanes without one lane erasing another.
+Give every phrase in the canonical slate either a valid primary-cohort observation or an explicit same-cohort missing, unavailable, invalid, or conflict record before narrowing to an active pool. Route search phrases into `strict_title_supply_longtail`, `scale_search`, or `emerging_search`; maintain `narrow_product_value` as a separate product-research lane. A family may occupy multiple lanes without one lane erasing another.
 
-Within each cohort produce independent Volume-desc, KD-asc, and CPC-desc views. Apply the 20% boundary as a soft review band. Check every metric-filled phrase with `0 < Volume <= 250` for KGR before any active-pool claim. Calculate KGR and the search-opportunity heuristic only under the conditions in the metrics reference. Never average or splice fields from different providers.
+Within each cohort produce independent Volume-desc, KD-asc, and CPC-desc views. Apply the 20% boundary as a soft review band. Check every metric-filled phrase with `0 < Volume <= 250` under method `strict_multi_intitle_enumerated_v1`, query syntax `explicit_intitle_per_token_v1`, tokenizer `nfkc_unicode_alnum_connectors_v1`, and count method `paginated_deduplicated_organic_canonical_urls_with_displayed_title_integrity_audit` before any active-pool claim. Freeze and record `hl`, `gl`, `device=desktop`, `SearchType=google_web`, normalized integer `pws=0`, `filter=0`, `nfpr=1`, and checked date; different context keys are separate cohorts and cannot be merged or reused. Require schema booleans to be actual booleans. Bind every saved Google page URL to the exact strict query, frozen context, and continuous zero-based pagination offset. After NFKC, retain Unicode alphanumeric tokens and the in-token connectors `&`, `+`, and `#`; discard a standalone `&`. Emit every cleaned token as a quoted operator such as `intitle:"token"`. Paginate and first count deduplicated organic canonical URLs, stripping display-tracking parameters while preserving business query parameters; then audit every organic displayed title for all keyword tokens. Any mismatch, automatic or explicit truncation, or unknown title sets `TitleSupplyQueryIntegrity=hold` and the outcome to `not_assessable_query_integrity`; the URL remains in the observed count, but no ratio or low-supply inference is allowed. A block, CAPTCHA, repeated page URL, or repeated organic-result set is also not exhaustion. Accept exhaustion only with a terminal pagination state, a semantically consistent allowed end-of-results evidence code, and an explicitly absent next control. Use `T = floor(0.30 × Volume) + 1`; when the count reaches T while another page may exist, stop with `lower_bound_gt_0_30` and leave `StrictTitleSupplyRatio` empty. Only genuine pagination exhaustion with `TitleSupplyQueryIntegrity=pass` yields an exact `StrictTitleSupplyRatio`. Reject this strict reducer for `Volume > 250`. Treat `<0.25`, `0.25–0.30`, and `>0.30` only as provisional routing bands. Do not call this ratio KGR. Any observation collected with classic unquoted `allintitle:` syntax or another method is legacy comparison only and has zero reuse under this method; preserve its actual method/query/count identity and record migration counts in the batch artifact. Never average or splice fields from different providers.
 
-Do not claim that a batch has no KGR opportunities from a final-pool sample. Report the complete denominator from promoted phrases through allintitle-checked phrases and KGR bands.
+Do not claim that a batch has low title supply from a final-pool sample. Report the complete denominator from promoted phrases through exact, lower-bound, blocked, missing, integrity-hold, method-mismatch, and context-mismatch strict title-supply outcomes. Conservation is necessary but not sufficient for the active-pool gate: `require_all_assessable=true` is mandatory, every eligible phrase must be exact or `lower_bound_gt_0_30`, and any not-assessable outcome keeps `StrictTitleSupplyEligibleCoverageComplete=false`.
 
 ### 9. Validate Trends and live SERPs by lane
 
 Store full Trends and SERP context at row level. A checked SERP is not a passed SERP. Only `SerpGateStatus=pass` under matching market, language, device, search type, date, intent group, and page type permits heuristic group ranking. Negative SERPs remain valuable counterevidence.
 
-Apply weights only inside the lane and compatible cohort defined by the stage-and-weight reference. Before SERP review, KGR bands are protected routing rules rather than a partial weighted score. A strong KGR phrase always receives a current SERP check before it can be dropped from the search-acquisition pool.
+Apply weights only inside the lane and compatible cohort defined by the stage-and-weight reference. Before SERP review, the provisional strict title-supply bands are protected routing rules rather than a partial weighted score. A provisional-strong phrase always receives a current SERP check before it can be dropped from the search-acquisition pool.
 
 Use Similarweb Global versus Semrush US only to form a `market_mismatch_hypothesis`; it cannot prove that Americans lack curiosity or replace US data.
 
@@ -118,13 +118,13 @@ Use Similarweb Global versus Semrush US only to form a `market_mismatch_hypothes
 
 Compare only inside compatible lanes and cohorts, then construct the active pool at product-family level. Cluster by shared user, moment, input, transformation, and deliverable—not merely by shared root or implementation library. Separate extraction, conversion, transcription, OCR, and segmentation when their completed jobs differ.
 
-Set `ActivePoolEligible=true` only when the canonical slate is frozen, primary metric observation coverage is conserved, all KGR-eligible phrases are assessed, and representative SERP coverage is complete. When false, do not create an `active-pool` file, status, or report title.
+Set `ActivePoolEligible=true` only from inline evidence rows, never from caller-supplied aggregate counts or compatibility booleans. Recompute the canonical, strict-observation, SERP-plan, and SERP-observation SHA-256 values from their record arrays. Every canonical row uses `complete|partial|unavailable|invalid|conflict`, keeps `volume/kd/cpc` as a non-negative number or null, and lists exactly the null fields in `missing_fields`; a partial row may preserve Volume while KD/CPC remain missing. Derive the strict denominator from complete or partial rows whose observed Volume satisfies `0 < Volume <= 250`; the strict keyword-ID set must equal that set exactly. Require one complete compatible primary-metric cohort and bind the strict `hl/gl/device` to its language/market/device; require one strict query-context key, actual repeat-observation records for every exact provisional-strong/borderline or primary zero result, and zero not-assessable strict outcomes. Freeze a SERP plan whose plan IDs exactly match observation IDs and whose real context rows match the metric market/language/device; it must cover at least `min(30, family_total)` families, every protected strict-title-supply family, every `narrow_product_value` family, and every non-empty lane. SHA verification prevents stale or accidentally divergent summaries; it is not an immutable external receipt. When any derived gate is false, do not create an `active-pool` file, status, or report title.
 
 Before writing an active pool, run `python3 scripts/validate_stage_gate.py <stage-summary.json>`. Treat a non-zero exit as a hard stop for active-pool naming and final-pool claims; preserve the preview and unresolved denominators instead.
 
 Normally return 15–30 research-only product families across tiers: `deep_research`, `quick_test`, `observe`, and `counterevidence_hold`. Do not pad with garbage to hit a quota; if fewer survive, state the shortfall and which discovery branches remain unvisited. Preserve alternate phrases inside each family rather than manufacturing duplicate products or pages.
 
-If passed strong/borderline KGR families alone exceed 30, keep a 15–30 comparison core plus a `protected_kgr_annex`; the annex remains active search research and is not silently discarded to satisfy presentation capacity.
+If passed provisional-strong/borderline strict-title-supply families alone exceed 30, keep a 15–30 comparison core plus a `protected_title_supply_annex`; the annex remains active search research and is not silently discarded to satisfy presentation capacity.
 
 Keep every qualifying family in a versioned longlist even when only 15–30 appear in the active comparison pool. The active-pool size is a decision-aid target, not a deletion rule.
 

@@ -67,7 +67,7 @@ Preserve raw provider display values and normalized values. `0` is valid. Blank,
 
 Metric observation coverage is conserved across the full canonical slate:
 
-`canonical_slate = metric_valid + metric_missing + metric_unavailable + metric_invalid + metric_conflict`
+`canonical_slate = metric_complete + metric_partial + metric_unavailable + metric_invalid + metric_conflict`
 
 Coverage is complete when every canonical phrase has one of those explicit outcomes in the declared primary cohort. It does not require inventing numeric values for unavailable phrases.
 
@@ -110,39 +110,50 @@ It is a descriptive acquisition heuristic, not an eligibility, demand, payment, 
 
 The scored audit must retain the original input order and all rows, adding:
 
-`DataStatus, InputRowNumber, RawExtraCells, MetricCohortKey, ScoreDomain, SearchLane, WeightVersion, CoverageSignature, LaneScoreStatus, LaneScore, ScoreComponents, RankStability, KgrCoverageStatus, RankingGroupKey, HeuristicGroupRank, ScaleWindow, NewSiteWindow, BoundaryRatio, TitleSupplyRatio, KGR, KGRApplicability, KGRStatus, SearchOpportunityHeuristic, KDRoi, KD_effective, RankingStatus, PendingMetrics, eligible, rejection_reason`
+`DataStatus, InputRowNumber, RawExtraCells, MetricCohortKey, ScoreDomain, SearchLane, WeightVersion, CoverageSignature, LaneScoreStatus, LaneScore, ScoreComponents, RankStability, StrictTitleSupplyCoverageStatus, RankingGroupKey, HeuristicGroupRank, ScaleWindow, NewSiteWindow, BoundaryRatio, TitleSupplyMethodVersion, TitleSupplyTokenizerVersion, TitleSupplyQuerySyntax, TitleSupplyQuery, TitleSupplyCountMethod, TitleSupplyHL, TitleSupplyGL, TitleSupplyDevice, TitleSupplySearchType, TitleSupplyPws, TitleSupplyFilter, TitleSupplyNfpr, TitleSupplyCheckedDate, TitleSupplyQueryContextKey, StrictTitleSupplyUniqueUrlCount, TitleSupplyPageCount, TitleSupplyExhausted, TitleSupplyBlocked, TitleSupplyCaptcha, TitleSupplyQueryIntegrity, TitleSupplyIntegrityIssueCount, TitleSupplyEarlyStopT, TitleSupplyCountStatus, StrictTitleSupplyRatio, StrictTitleSupplyRoutingBand, SearchOpportunityHeuristic, KDRoi, KD_effective, RankingStatus, PendingMetrics, eligible, rejection_reason`
 
 Missing Volume/CPC/KD is `pending_metrics`; missing cohort context is `pending_metric_context`. Empty keyword, invalid numbers or dates, extra CSV cells, Volume `<=0`, or negative CPC/KD/intitle are invalid under 1.4.0. A raw zero must still be preserved as the observed value and must not become missing; route zero-volume rows to the explicit invalid/zero-volume ledger. Preserve invalid rows; do not silently coerce or delete them.
 
-## KGR and title supply
+## Strict title supply and classic-KGR separation
 
-- KGR is calculated only when `0 < Volume <= 250` and a valid non-negative `intitle` exists.
-- `KGR = intitle / Volume`.
-- Above 250, retain `TitleSupplyRatio` but mark KGR `out_of_scope`.
-- A 250–300 soft area may be marked `near_applicability_review`, never KGR PASS.
-- Preserve `IntitleSource`, `IntitleCheckedAt`, `IntitleQuerySyntax`, and `IntitleMarketLimitation`.
+Method `strict_multi_intitle_enumerated_v1` defines a new title-supply observation. It is not classic KGR:
 
-With default KGR threshold `0.25` and boundary ratio `0.20`:
+- A normal Google result estimate from one `allintitle:<phrase>` page is not an acceptable numerator for either this method or a new KGR claim.
+- Apply `nfkc_unicode_alnum_connectors_v1`: after NFKC, retain Unicode alphanumeric tokens plus in-token `&`, `+`, and `#`; preserve stopwords and non-ASCII tokens, and discard a standalone `&`. Under `explicit_intitle_per_token_v1`, quote every cleaned token as `intitle:"token"`. Preserve the exact keyword, query, method/tokenizer identity, locale, device, date, and search limitations.
+- Record count method `paginated_deduplicated_organic_canonical_urls_with_displayed_title_integrity_audit`; another count method is incompatible rather than comparable.
+- Freeze `hl`, `gl`, `device=desktop`, `SearchType=google_web`, `pws=0`, `filter=0`, `nfpr=1`, and checked date into `TitleSupplyQueryContextKey`. Different context keys are separate cohorts: never merge counts or reuse one as the other's observation.
+- Enumerate pages and count operator-returned organic canonical URLs before auditing displayed-title integrity. Deduplicate canonical URLs across pages and remove common display-tracking parameters (`utm_*`, `gclid`, `fbclid`, `srsltid`) while retaining business parameters. Do not count ads, modules, result cards, displayed totals, cached links, navigation links, or repeated URLs. A title mismatch remains in the observed URL count but holds the whole observation, so it cannot yield a ratio.
+- A CAPTCHA, generic block, repeated pagination URL, or identical non-empty organic URL set on different page URLs is not exhaustion. Stop immediately and record `TitleSupplyBlocked=true` plus `StrictTitleSupplyRoutingBand=not_assessable_blocked`; do not infer a ratio or continue automated requests. Count each operator-returned organic canonical URL before its displayed-title integrity audit. Any mismatch, explicit truncation, detected ellipsis, or unknown title sets `TitleSupplyQueryIntegrity=hold`, `TitleSupplyCountStatus=query_integrity_hold`, and `StrictTitleSupplyRoutingBand=not_assessable_query_integrity`. Retain the observed URL count for audit, but never publish a ratio or low-supply inference from a held observation.
+- Require actual JSON booleans for every page/result flag. Bind each page URL's decoded `q`, `hl`, `gl`, `pws`, `filter`, `nfpr`, and `start` to the observation query/context and continuous page index. Store normalized `pws`, `filter`, and `nfpr` as integers in the observation context even though browser URL parameters are strings. Reject missing-first-page, skipped-page, wrong-query, and cross-context inputs rather than interpreting them.
+- Genuine terminal pagination requires `pagination_state=end_of_results`, an allowed end-of-results evidence code, and `has_next_control=false`. Only then may the reducer emit `TitleSupplyCountStatus=exact_exhausted` and, when `0 < Volume <= 250`, `StrictTitleSupplyRatio = StrictTitleSupplyUniqueUrlCount / Volume`.
+- Terminal evidence must agree with the page: `explicit_no_results` requires zero organic results, and `terminal_page_short_and_no_next` requires an observed page shorter than the frozen page size.
+- Compute `T = floor(0.30 × Volume) + 1`. When the unique count reaches T before genuine exhaustion, stop with `TitleSupplyCountStatus=lower_bound_gt_0_30`. Preserve the count but leave `StrictTitleSupplyRatio` empty; do not manufacture a lower-bound ratio as though it were exact.
+- Data collected under classic unquoted `allintitle:`, a displayed-total method, another tokenization, or any pre-v2.0.1 method is `legacy_reference_only` / `not_assessable_method_mismatch`. Its reuse is zero under the strict method. Preserve it only as legacy comparison, record the actual migration denominator per batch, and recollect every eligible phrase for strict coverage.
+- The strict long-tail reducer rejects Volume above 250. If scale-lane title supply is collected, keep it in a separate out-of-scope artifact with no strict long-tail routing band. A 250–300 soft area may be reviewed, never treated as a pass.
+- Preserve `TitleSupplySource`, `TitleSupplyMethodVersion`, `TitleSupplyTokenizerVersion`, `TitleSupplyQuerySyntax`, `TitleSupplyQuery`, `TitleSupplyCountMethod`, all frozen query-context fields and key, `StrictTitleSupplyUniqueUrlCount`, `TitleSupplyPageCount`, `TitleSupplyExhausted`, `TitleSupplyBlocked`, `TitleSupplyCaptcha`, `TitleSupplyQueryIntegrity`, `TitleSupplyIntegrityIssueCount`, `TitleSupplyEarlyStopT`, `TitleSupplyCountStatus`, and the market limitation.
 
-- `<0.25`: `strong_kgr`; always route to current SERP;
-- `0.25–<0.30`: `borderline_kgr`; route to SERP unless semantic contamination is already proven;
-- `0.30–1.00`: `secondary_kgr`; sample when task clarity or trend evidence is strong;
-- `>1.00`: `no_kgr_advantage`; do not promote on KGR grounds.
+For compatible exact observations, use the following provisional routing bands:
 
-KGR coverage is complete only when the report provides these exact denominators:
+- `<0.25`: `provisional_strong`; always route to current SERP;
+- `0.25–0.30`, inclusive: `provisional_borderline`; route to SERP unless semantic contamination is already proven;
+- `>0.30`: `provisional_high`; do not promote on title-supply grounds.
 
-`canonical slate = metric_valid + metric_missing + metric_unavailable + metric_invalid + metric_conflict`
+Compatible early-stop observations are `provisional_high` with count status `lower_bound_gt_0_30`. They are assessed title-supply outcomes, not ratios and not KGR measurements.
 
-`promoted phrases -> product families -> canonical keyword slate -> metric-valid phrases -> 0<Volume<=250 phrases -> allintitle-checked phrases -> strong/borderline/secondary/no-advantage`
+Strict title-supply coverage is complete only when the report provides these exact denominators:
 
-Checking only a manually selected or numerically ranked active pool is `KgrCoverageStatus=sampled`, never batch-wide completion. Missing Volume or an unavailable result count stays missing. Use `not_assessable_missing_volume`, `not_assessable_missing_intitle`, or `invalid_zero_volume` rather than silently removing the phrase from the denominator. Do not coerce missing score components to zero or calculate a partial lane score as if it were complete.
+`canonical slate = metric_complete + metric_partial + metric_unavailable + metric_invalid + metric_conflict`
+
+`promoted phrases -> product families -> canonical keyword slate -> metric-valid phrases -> 0<Volume<=250 phrases -> exact_exhausted + lower_bound_gt_0_30 + missing/blocked/method-mismatch -> provisional strong/borderline/high`
+
+Checking only a manually selected or numerically ranked active pool is `StrictTitleSupplyCoverageStatus=sampled`, never batch-wide completion. Canonical metric rows use `complete|partial|unavailable|invalid|conflict`, retain `volume/kd/cpc` independently as a non-negative number or null, and list every null field in `missing_fields`. Derive the eligible denominator and keyword-ID set from complete or partial rows whose observed Volume satisfies `0 < Volume <= 250`; a partial row with Volume but missing KD/CPC remains eligible. Do not trust a submitted eligible aggregate. The strict record ID set must match it exactly. Conserve `eligible = exact_checked + lower_bound_gt_0_30 + not_assessable_missing_enumeration + not_assessable_blocked + not_assessable_query_integrity + not_assessable_method_mismatch + not_assessable_context_mismatch`. Conservation proves that no row disappeared; it does not prove assessability. `require_all_assessable=true` is mandatory, every observation must use the expected context, exactly one compatible context key is allowed for a non-empty eligible set, strict `hl/gl/device` must equal metric language/market/device, and every not-assessable outcome must be absent before `StrictTitleSupplyEligibleCoverageComplete` or `ActivePoolEligible` can be true. Exact provisional-strong/borderline and primary exact-zero observations also require separately identified same-context exact repeats at `<=0.30`; never substitute a confirmation boolean. Missing Volume or an unavailable enumeration stays missing. Use explicit not-assessable or invalid outcomes rather than silently removing a phrase from the denominator. Do not coerce missing score components to zero or calculate a partial lane score as if it were complete.
 
 ## Lane scoring
 
 Assign the lane before scoring and normalize only inside a compatible provider cohort. Use the stage-and-weight routing reference for the weights. Preserve every component, normalization method, missing value, and gate override in `ScoreComponents`.
 
-- `kgr_longtail` requires KGR coverage before lane ranking;
-- `scale_search` gives KGR zero weight;
+- `strict_title_supply_longtail` requires compatible strict coverage before lane ranking;
+- `scale_search` gives strict title supply zero weight;
 - `emerging_search` protects new terms from missing-metric penalties;
 - `narrow_product_value` is a product-research hypothesis and must not be presented as a low-competition SEO opportunity.
 

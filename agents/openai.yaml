@@ -1,6 +1,6 @@
 interface:
   display_name: "词根关键词机会总控"
-  short_description: "多渠道扩词、完整KGR覆盖、分赛道路由与候选池审计"
-  default_prompt: "使用 $root-keyword-opportunity-research 从登记词根出发，完成高召回扩展、全量指标与KGR覆盖、分赛道SERP验证，并输出可追溯候选池。"
+  short_description: "多渠道扩词、严格标题供给覆盖、分赛道路由与候选池审计"
+  default_prompt: "使用 $root-keyword-opportunity-research 从登记词根出发，完成高召回扩展、全量指标与严格多 intitle 标题供给覆盖、分赛道 SERP 验证，并输出可追溯候选池。"
 policy:
   allow_implicit_invocation: true
